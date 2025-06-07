@@ -1,0 +1,129 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type             String
+  provider         String
+  providerAccountId String
+  refresh_token    String?  @db.Text
+  access_token     String?  @db.Text
+  expires_at       Int?
+  token_type       String?
+  scope            String?
+  id_token         String?  @db.Text
+  session_state    String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id                String    @id @default(cuid())
+  name             String?
+  email            String?    @unique
+  emailVerified    DateTime?
+  image            String?
+  phone            String?
+  password         String?
+  accounts         Account[]
+  sessions         Session[]
+  profile          Profile?
+  jobApplications  JobApplication[]
+  blacklistedCompanies BlacklistedCompany[]
+}
+
+model Profile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  location        String?
+  resumeUrl       String?
+  coverLetterTemplate String? @db.Text
+  linkedInProfile String?
+  indeedProfile   String?
+  githubProfile   String?
+  jobPreferences  JobPreferences?
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model JobPreferences {
+  id              String    @id @default(cuid())
+  profileId       String    @unique
+  jobTitles       String[]
+  locations       String[]
+  isRemoteOnly    Boolean   @default(false)
+  minSalary       Int?
+  maxSalary       Int?
+  profile         Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model JobApplication {
+  id              String    @id @default(cuid())
+  userId          String
+  jobTitle        String
+  company         String
+  location        String?
+  jobDescription  String    @db.Text
+  applicationDate DateTime  @default(now())
+  status          ApplicationStatus @default(APPLIED)
+  coverLetter     String    @db.Text
+  jobUrl          String
+  platform        Platform
+  response        String?   @db.Text
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BlacklistedCompany {
+  id              String    @id @default(cuid())
+  userId          String
+  companyName     String
+  reason          String?
+  dateAdded       DateTime  @default(now())
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyName])
+}
+
+enum ApplicationStatus {
+  APPLIED
+  REJECTED
+  INTERVIEW_SCHEDULED
+  OFFER_RECEIVED
+  NO_RESPONSE
+}
+
+enum Platform {
+  LINKEDIN
+  INDEED
+  OTHER
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
