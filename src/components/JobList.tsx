@@ -4,7 +4,6 @@ import { useState } from 'react'
 import {
   BriefcaseIcon,
   BuildingOfficeIcon,
-  MapPinIcon,
   CalendarIcon,
 } from '@heroicons/react/24/outline'
 import axios from 'axios'
@@ -14,30 +13,22 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Modal from './Modal'
 
-type JobStatus = 'APPLIED' | 'REJECTED' | 'INTERVIEW_SCHEDULED' | 'OFFER_RECEIVED' | 'NO_RESPONSE'
-type Platform = 'LINKEDIN' | 'INDEED' | 'OTHER'
+const jobSchema = z.object({
+  jobTitle: z.string().min(1, 'Job title is required'),
+  company: z.string().min(1, 'Company name is required'),
+  status: z.enum(['APPLIED', 'REJECTED', 'INTERVIEW_SCHEDULED', 'OFFER_RECEIVED', 'NO_RESPONSE']).default('APPLIED')
+})
+
+type JobStatus = z.infer<typeof jobSchema>['status']
+type JobFormData = z.infer<typeof jobSchema>
 
 interface Job {
   id: string
   jobTitle: string
   company: string
-  location: string
   applicationDate: string
   status: JobStatus
-  platform: Platform
 }
-
-const jobSchema = z.object({
-  jobTitle: z.string().min(1, 'Job title is required'),
-  company: z.string().min(1, 'Company name is required'),
-  location: z.string().min(1, 'Location is required'),
-  jobDescription: z.string().min(1, 'Job description is required'),
-  jobUrl: z.string().url('Invalid job URL'),
-  platform: z.enum(['LINKEDIN', 'INDEED', 'OTHER']),
-  coverLetter: z.string().min(1, 'Cover letter is required'),
-})
-
-type JobFormData = z.infer<typeof jobSchema>
 
 const fetchJobs = async (): Promise<Job[]> => {
   const response = await axios.get('/api/jobs')
@@ -46,6 +37,11 @@ const fetchJobs = async (): Promise<Job[]> => {
 
 const createJob = async (data: JobFormData): Promise<Job> => {
   const response = await axios.post('/api/jobs', data)
+  return response.data
+}
+
+const updateJobStatus = async (jobId: string, status: JobStatus): Promise<Job> => {
+  const response = await axios.put('/api/jobs', { id: jobId, status })
   return response.data
 }
 
@@ -67,6 +63,14 @@ export function JobList() {
     },
   })
 
+  const { mutate: updateStatus } = useMutation({
+    mutationFn: ({ jobId, status }: { jobId: string; status: JobStatus }) =>
+      updateJobStatus(jobId, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+    },
+  })
+
   const {
     register,
     handleSubmit,
@@ -74,10 +78,17 @@ export function JobList() {
     formState: { errors },
   } = useForm<JobFormData>({
     resolver: zodResolver(jobSchema),
+    defaultValues: {
+      status: 'APPLIED'
+    }
   })
 
   const onSubmit = (data: JobFormData) => {
     submitJob(data)
+  }
+
+  const handleStatusChange = (jobId: string, newStatus: JobStatus) => {
+    updateStatus({ jobId, status: newStatus })
   }
 
   const statusColors: Record<JobStatus, string> = {
@@ -137,21 +148,21 @@ export function JobList() {
                       {job.company}
                     </div>
                     <div className="mt-2 flex items-center text-sm text-black">
-                      <MapPinIcon className="mr-1.5 h-5 w-5 flex-shrink-0" />
-                      {job.location}
-                    </div>
-                    <div className="mt-2 flex items-center text-sm text-black">
                       <CalendarIcon className="mr-1.5 h-5 w-5 flex-shrink-0" />
                       Applied on {new Date(job.applicationDate).toLocaleDateString()}
                     </div>
                   </div>
-                  <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      statusColors[job.status]
-                    }`}
+                  <select
+                    value={job.status}
+                    onChange={(e) => handleStatusChange(job.id, e.target.value as JobStatus)}
+                    className={`ml-4 px-2.5 py-1 rounded text-sm font-medium ${statusColors[job.status]} border-0 cursor-pointer focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
                   >
-                    {job.status.replace('_', ' ')}
-                  </span>
+                    <option value="APPLIED">Applied</option>
+                    <option value="REJECTED">Rejected</option>
+                    <option value="INTERVIEW_SCHEDULED">Interview Scheduled</option>
+                    <option value="OFFER_RECEIVED">Offer Received</option>
+                    <option value="NO_RESPONSE">No Response</option>
+                  </select>
                 </div>
               </li>
             ))}
@@ -191,74 +202,6 @@ export function JobList() {
             )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-black">Location</label>
-            <input
-              type="text"
-              {...register('location')}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              required
-            />
-            {errors.location && (
-              <p className="mt-1 text-sm text-red-600">{errors.location.message}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-black">Job URL</label>
-            <input
-              type="url"
-              {...register('jobUrl')}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              required
-            />
-            {errors.jobUrl && (
-              <p className="mt-1 text-sm text-red-600">{errors.jobUrl.message}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-black">Platform</label>
-            <select
-              {...register('platform')}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              required
-            >
-              <option value="LINKEDIN">LinkedIn</option>
-              <option value="INDEED">Indeed</option>
-              <option value="OTHER">Other</option>
-            </select>
-            {errors.platform && (
-              <p className="mt-1 text-sm text-red-600">{errors.platform.message}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-black">Job Description</label>
-            <textarea
-              {...register('jobDescription')}
-              rows={4}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              required
-            />
-            {errors.jobDescription && (
-              <p className="mt-1 text-sm text-red-600">{errors.jobDescription.message}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-black">Cover Letter</label>
-            <textarea
-              {...register('coverLetter')}
-              rows={4}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              required
-            />
-            {errors.coverLetter && (
-              <p className="mt-1 text-sm text-red-600">{errors.coverLetter.message}</p>
-            )}
-          </div>
-
           <div className="flex justify-end space-x-3">
             <button
               type="button"
@@ -272,7 +215,7 @@ export function JobList() {
               disabled={isSubmitting}
               className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700"
             >
-              {isSubmitting ? 'Submitting...' : 'Submit Application'}
+              {isSubmitting ? 'Submitting...' : 'Add Application'}
             </button>
           </div>
         </form>

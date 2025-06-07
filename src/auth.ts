@@ -1,16 +1,10 @@
-import NextAuth from 'next-auth'
-import type { DefaultSession } from 'next-auth'
+import NextAuth, { type NextAuthOptions } from 'next-auth'
 import GoogleProvider from 'next-auth/providers/google'
+import { PrismaAdapter } from '@auth/prisma-adapter'
+import { prisma } from '@/lib/prisma'
 
-declare module 'next-auth' {
-  interface Session extends DefaultSession {
-    user: {
-      id: string
-    } & DefaultSession['user']
-  }
-}
-
-export const config = {
+export const authOptions: NextAuthOptions = {
+  adapter: PrismaAdapter(prisma),
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID ?? '',
@@ -22,7 +16,13 @@ export const config = {
     error: '/auth/error',
   },
   callbacks: {
-    authorized({ auth, request: { nextUrl } }: { auth: any; request: { nextUrl: URL } }) {
+    session({ session, user }) {
+      if (session.user) {
+        session.user.id = user.id
+      }
+      return session
+    },
+    authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user
       const isOnDashboard = nextUrl.pathname.startsWith('/')
       if (isOnDashboard) {
@@ -36,4 +36,5 @@ export const config = {
   },
 }
 
-export const { auth, signIn, signOut } = NextAuth(config) 
+const handler = NextAuth(authOptions)
+export { handler as GET, handler as POST } 
